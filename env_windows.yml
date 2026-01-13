@@ -1,6 +1,8 @@
 name: contro
 channels:
   - conda-forge
+  - nvidia
+  - pytorch
 dependencies:
   - python=3.12.10
   - ipykernel
@@ -19,11 +21,12 @@ dependencies:
   - streamlit
   - beautifulsoup4
   - protobuf==3.20.*  # Fix for Google API compatibility issues
+  - pytorch=*=*cuda*
   # - streamlit-agraph
   # - pip
   - pip:
     # Core Data Science (Install via Pip to avoid DLL conflicts with Torch)
-    - streamlit-plotly-events
+    # - streamlit-plotly-events
     - umap-learn
     - einops
     # - numpy
@@ -45,7 +48,7 @@ dependencies:
     # - torchvision
     # - --index-url https://download.pytorch.org/whl/cu128
     # - streamlit-agraph # May need to be installed seperately
-# mamba env remove -n contro_v1 --yes; mamba env create -f env_windows.yml
+# mamba env remove -n contro --yes; mamba env create -f env_windows.yml
 # requires mamba install with conda install mamba in base environment, then do the
 # mamba commands above to recreate the environment
 

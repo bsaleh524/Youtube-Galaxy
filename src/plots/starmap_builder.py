@@ -77,7 +77,7 @@ def build_starmap(reduction_method="tsne"):
         text_corpus.append(f"{c['title']} - {cleaned_description}")
 
     # encode() handles batching automatically
-    embeddings = model.encode(text_corpus, show_progress_bar=True, batch_size=1)
+    embeddings = model.encode(text_corpus, show_progress_bar=True, batch_size=4)
 
     # 3. Clustering (The "Genre" Detector)
     print("Clustering creators into genres...")
@@ -124,7 +124,7 @@ def build_starmap(reduction_method="tsne"):
     })
 
     df.sort_values('cluster_id', inplace=True)
-    output_file = os.path.join(DATA_DIR, "processed", "plotly", f"starmap_data_{reduction_method}_{num_clusters}.csv")
+    output_file = os.path.join(DATA_DIR, "processed", "plotly", f"starmap_data_big_{reduction_method}_{num_clusters}.csv")
     
     # Ensure directory exists
     os.makedirs(os.path.dirname(output_file), exist_ok=True)
@@ -133,4 +133,4 @@ def build_starmap(reduction_method="tsne"):
     print(f"Done! Saved {len(df)} nodes to {output_file}")
 
 if __name__ == "__main__":
-    build_starmap(reduction_method="tsne")
+    build_starmap(reduction_method="umap")

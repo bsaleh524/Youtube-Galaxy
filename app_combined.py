@@ -4,6 +4,8 @@ import numpy as np
 import plotly.express as px
 import plotly.graph_objects as go
 import os
+import requests  # Added for image fetching
+from io import BytesIO  # Added for image processing
 from pathlib import Path
 
 # --- Page Configuration ---
@@ -16,19 +18,25 @@ st.set_page_config(
 
 # --- Configuration ---
 DATA_DIR = Path("data")
-ANALYZED_CSV_PATH = DATA_DIR / "analyzed_data.csv"
-# Using the UMAP path from your snippet
-STARMAP_CSV_PATH = DATA_DIR / "processed/plotly/starmap_data_tsne_trimmed_120_labeled.csv"
+# Keeping your specific path
+STARMAP_CSV_PATH = DATA_DIR / "processed/plotly/starmap_data_big_tsne_trimmed_120_labeled.csv"
+
+# --- Helper Function for Images ---
+@st.cache_data(show_spinner=False)
+def get_image_from_url(url):
+    """
+    Fetches image bytes from a URL to bypass hotlink protection.
+    Returns the image data or None if it fails.
+    """
+    try:
+        response = requests.get(url, timeout=3)
+        # Check if the request was successful
+        response.raise_for_status()
+        return BytesIO(response.content)
+    except Exception:
+        return None
 
 # --- Data Loading ---
-# @st.cache_data
-# def load_scandal_data(filepath):
-#     if not filepath.exists(): return None
-#     df = pd.read_csv(filepath)
-#     df['timestamp_utc'] = pd.to_datetime(df['timestamp_utc'], errors='coerce')
-#     df.dropna(subset=['timestamp_utc'], inplace=True)
-#     return df
-
 @st.cache_data
 def load_starmap_data(filepath):
     if not filepath.exists(): return None
@@ -40,55 +48,6 @@ def load_starmap_data(filepath):
 
 # --- Components ---
 
-# def render_gauge(value):
-#     fig = go.Figure(go.Indicator(
-#         mode = "gauge+number",
-#         value = value,
-#         domain = {'x': [0, 1], 'y': [0, 1]},
-#         title = {'text': "Negative Sentiment %"},
-#         gauge = {
-#             'axis': {'range': [None, 100]},
-#             'bar': {'color': "#FF4B4B"}, 
-#             'bgcolor': "white",
-#             'borderwidth': 2,
-#             'bordercolor': "gray",
-#             'steps': [
-#                 {'range': [0, 30], 'color': "#e6f9e6"},
-#                 {'range': [30, 70], 'color': "#fff8e6"},
-#                 {'range': [70, 100], 'color': "#ffe6e6"}
-#             ],
-#         }
-#     ))
-#     fig.update_layout(height=250, margin=dict(l=10, r=10, t=50, b=10))
-#     st.plotly_chart(fig, width='stretch')
-
-# def render_scandal_dashboard(df):
-#     st.subheader("High-Level Summary: Hasan 'Shock Collar' Incident")
-#     total_comments = len(df)
-#     sentiment_counts = df['sentiment'].value_counts()
-#     total_negative = sentiment_counts.get('Negative', 0)
-#     neg_percentage = (total_negative / total_comments) * 100 if total_comments > 0 else 0
-
-#     col_gauge, col_stats = st.columns([1, 2])
-#     with col_gauge:
-#         st.write("### Scandal Score")
-#         render_gauge(neg_percentage)
-#     with col_stats:
-#         st.write("### Sentiment Breakdown")
-#         c1, c2, c3 = st.columns(3)
-#         c1.metric("Negative", f"{total_negative:,}", delta="Alert" if neg_percentage > 50 else None, delta_color="inverse")
-#         c2.metric("Positive", f"{sentiment_counts.get('Positive', 0):,}")
-#         c3.metric("Neutral", f"{sentiment_counts.get('Neutral', 0):,}")
-
-#     st.divider()
-#     st.subheader("Receipts: Top Negative Keywords")
-#     negative_comments = df[df['sentiment'] == 'Negative']
-#     if not negative_comments.empty:
-#         keyword_counts = negative_comments['keywords'].str.split(', ').explode().value_counts()
-#         st.dataframe(keyword_counts.head(15), width='stretch', column_config={"count": "Frequency"})
-#     else:
-#         st.info("No negative keywords found.")
-
 def render_starmap(df):
     """Tab 2: The Creator Galaxy (3D)"""
     st.subheader("The Creator Galaxy (3D Star Map)")
@@ -96,6 +55,33 @@ def render_starmap(df):
     # Create a copy so we don't mutate the cached dataframe
     df = df.copy()
     
+    # --- PRE-CHECK: Neighbor Click Logic ---
+    # This block detects if a neighbor was clicked in the PREVIOUS run.
+    # It updates the 'search_box' session state BEFORE the search widget renders.
+    if 'active_neighbor_grid_key' in st.session_state:
+        grid_key = st.session_state['active_neighbor_grid_key']
+        
+        # Check if this specific grid has a selection in session state
+        if grid_key in st.session_state:
+            selection_state = st.session_state[grid_key]
+            
+            # Check if rows are selected (Standard Streamlit 1.35+ selection structure)
+            if selection_state and selection_state.get('selection') and selection_state['selection'].get('rows'):
+                # Get the index of the selected row
+                row_idx = selection_state['selection']['rows'][0]
+                
+                # Retrieve the list of neighbors associated with this specific grid
+                if 'active_neighbor_list' in st.session_state:
+                    neighbor_list = st.session_state['active_neighbor_list']
+                    
+                    # Safety check to ensure index is valid
+                    if 0 <= row_idx < len(neighbor_list):
+                        new_creator = neighbor_list[row_idx]
+                        
+                        # Update the search box state (only if changed)
+                        if st.session_state.get('search_box') != new_creator:
+                            st.session_state['search_box'] = new_creator
+
     col_map, col_info = st.columns([3, 1])
     
     # Placeholder for logic sharing
@@ -105,32 +91,34 @@ def render_starmap(df):
         # --- Filters ---
         c1, c2 = st.columns([1, 1])
         with c1:
-            search_query = st.text_input("🔍 Find a Creator", "")
+            # Key="search_box" binds this widget to st.session_state['search_box']
+            search_query = st.text_input("🔍 Find a Creator", "", key="search_box")
         with c2:
+            # Handle potential column name variations
+            cluster_col = 'cluster_name' if 'cluster_name' in df.columns else 'cluster_id'
+            
             # Get unique clusters for the dropdown
-            if 'cluster_name' in df.columns:
-                clusters = sorted(df['cluster_name'].unique())
-                cluster_options = ["All"] + [str(c) for c in clusters]
+            if cluster_col in df.columns:
+                clusters = sorted(df[cluster_col].astype(str).unique())
+                cluster_options = ["All"] + list(clusters)
             else:
-                clusters = []
                 cluster_options = ["All"]
             selected_cluster = st.selectbox("🎨 Highlight Group", cluster_options)
 
     # --- LIST SELECTION LOGIC (Sidebar) ---
-    # We render this BEFORE the map logic so the selection can influence the map colors
     with col_info:
         if selected_cluster != "All":
             st.markdown(f"**Members of '{selected_cluster}'**")
             st.caption("Select one to highlight")
             
             # Filter for the list
-            cluster_df = df[df['cluster_name'].astype(str) == selected_cluster].sort_values('title')
+            cluster_df = df[df[cluster_col].astype(str) == selected_cluster].sort_values('title')
             
             # Show list with selection enabled
             selection = st.dataframe(
                 cluster_df[['title']], 
                 hide_index=True, 
-                width='stretch',
+                width='stretch', 
                 on_select="rerun",
                 selection_mode="single-row",
                 key=f"list_{selected_cluster}" # Resets selection if you change category
@@ -144,25 +132,26 @@ def render_starmap(df):
     # --- MAP LOGIC ---
     with col_map:
         # 1. Base State
-        df['color_group'] = df['cluster_name'].astype(str)
+        df['color_group'] = df[cluster_col].astype(str)
         df['size'] = 3 # Default size
         
         # 2. Colors
         palette = px.colors.qualitative.Dark24 + px.colors.qualitative.Light24
-        cluster_color_map = {str(c): palette[i % len(palette)] for i, c in enumerate(clusters)}
+        unique_clusters = df[cluster_col].unique() if not df.empty else []
+        cluster_color_map = {str(c): palette[i % len(palette)] for i, c in enumerate(unique_clusters)}
         cluster_color_map['Match'] = '#FF0000'     # Bright Red for Search/Selection
         cluster_color_map['Background'] = '#222222' # Dark Gray for Dimmed items
 
         if selected_cluster != "All":
             # Identify rows that do NOT match the selection
-            mask_unselected = df['cluster_name'].astype(str) != selected_cluster
+            mask_unselected = df[cluster_col].astype(str) != selected_cluster
             
             # "Turn small" and gray out the unselected
             df.loc[mask_unselected, 'size'] = 1
             df.loc[mask_unselected, 'color_group'] = 'Background'
             
             # Highlight selected cluster
-            mask_selected = df['cluster_name'].astype(str) == selected_cluster
+            mask_selected = df[cluster_col].astype(str) == selected_cluster
             df.loc[mask_selected, 'size'] = 15
 
         # 3. Apply Search OR List Selection Highlight (Overrides Cluster logic)
@@ -188,6 +177,14 @@ def render_starmap(df):
                 st.success(f"Found {mask_search.sum()} matches!")
         
         # 4. Render Chart
+        # Setup hover data safely
+        hover_data = {'x': False, 'y': False, 'z': False, 'color_group': False, 'size': False}
+        if cluster_col in df.columns: hover_data[cluster_col] = False
+        
+        custom_data_cols = ['title']
+        for col in ['thumbnail', 'description', 'youtube_url']:
+            if col in df.columns: custom_data_cols.append(col)
+
         fig = px.scatter_3d(
             df, 
             x='x', 
@@ -195,12 +192,8 @@ def render_starmap(df):
             z='z',
             color='color_group',
             hover_name='title',
-            hover_data={
-                'description': False, 'cluster_name': False, 
-                'x': False, 'y': False, 'z': False, 
-                'color_group': False, 'size': False
-            },
-            custom_data=['thumbnail', 'description', 'title', 'youtube_url'],
+            hover_data=hover_data,
+            custom_data=custom_data_cols,
             size='size',
             size_max=14,
             opacity=0.7,
@@ -228,17 +221,17 @@ def render_starmap(df):
 
     # --- INFO PANEL (DETAILS) ---
     with col_info:
-        st.markdown("---") # Separator between list and details
+        st.markdown("---") 
         
         target_row = None
         
         # Priority Logic:
         # 1. List Selection (Specific drill-down)
         if list_selected_creator_title:
-             target_row = df[df['title'] == list_selected_creator_title].iloc[0]
+            matches = df[df['title'] == list_selected_creator_title]
+            if not matches.empty: target_row = matches.iloc[0]
         
         # 2. Map Click (Visual exploration)
-        # Note: If List is selected, it takes priority unless deselecting list.
         elif selected_points and selected_points['selection']['points']:
             point_index = selected_points['selection']['points'][0]['point_index']
             target_row = df.iloc[point_index]
@@ -249,24 +242,32 @@ def render_starmap(df):
 
         if target_row is not None:
             # --- 1. Basic Details ---
-            if pd.notna(target_row['thumbnail']) and str(target_row['thumbnail']).startswith('http'):
-                st.image(target_row['thumbnail'], width=150)
+            # CHANGED: Use the helper function to fetch image bytes
+            if 'thumbnail' in target_row and pd.notna(target_row['thumbnail']) and str(target_row['thumbnail']).startswith('http'):
+                image_data = get_image_from_url(target_row['thumbnail'])
+                if image_data:
+                    st.image(image_data, width=150)
+                else:
+                    # Optional: Fallback text or icon if image fails
+                    st.warning("Image unavailable")
             
             st.markdown(f"### {target_row['title']}")
             
-            yt_url = str(target_row['youtube_url']).strip()
-            if yt_url and yt_url.startswith('http'):
-                st.markdown(f"**[📺 Visit YouTube Channel]({yt_url})**")
+            if 'youtube_url' in target_row:
+                yt_url = str(target_row['youtube_url']).strip()
+                if yt_url and yt_url.startswith('http'):
+                    st.markdown(f"**[📺 Visit YouTube Channel]({yt_url})**")
             
-            st.caption(f"Cluster Group: {target_row['cluster_name']}")
+            st.caption(f"Cluster Group: {target_row[cluster_col]}")
             st.markdown("---")
             
             # --- 2. Truncated Description ---
             st.markdown("**Bio Preview:**")
-            desc = str(target_row['description'])
-            if len(desc) > 300:
-                desc = desc[:300] + "..."
-            st.write(desc)
+            if 'description' in target_row:
+                desc = str(target_row['description'])
+                if len(desc) > 600:
+                    desc = desc[:600] + "..."
+                st.write(desc)
             
             st.markdown("---")
             
@@ -288,15 +289,29 @@ def render_starmap(df):
             # Filter self and get top 5
             closest_df = df_neighbors[df_neighbors['distance'] > 0.0001].nsmallest(5, 'distance')
             
-            st.dataframe(
-                closest_df[['title', 'cluster_name']],
+            # The 'key' ensures the selection resets when the main target changes
+            unique_key_suffix = target_row['id'] if 'id' in target_row else target_row['title']
+            
+            # We construct a dynamic key for this specific neighbor grid
+            current_grid_key = f"neighbors_of_{unique_key_suffix}"
+            
+            # CHANGED: Store the context (Key and Data) in session state for the PRE-CHECK in the next run
+            st.session_state['active_neighbor_grid_key'] = current_grid_key
+            st.session_state['active_neighbor_list'] = closest_df['title'].tolist()
+
+            neighbor_selection = st.dataframe(
+                closest_df[['title', cluster_col]],
                 column_config={
                     "title": "Creator",
-                    "cluster_name": "Group",
+                    cluster_col: "Group",
                 },
                 hide_index=True,
-                width='stretch'
+                width='stretch', # Fixed: replaced 'width="stretch"' which is deprecated/invalid
+                on_select="rerun",
+                selection_mode="single-row",
+                key=current_grid_key 
             )
+
         else:
              if selected_cluster == "All":
                  st.info("Search for a creator or select category to find a creator")
@@ -307,23 +322,21 @@ def main():
     st.markdown("""
     Explore the vast universe of YouTube creators clustered by content similarity.
     Use the search box or highlight specific groups to discover creators and their connections.
+    Created by SpookyPharaoh
     """)
-    tab2 = st.tabs(["Galaxy"])
-
-    # with tab1:
-    #     df = load_scandal_data(ANALYZED_CSV_PATH)
-    #     if df is not None: render_scandal_dashboard(df)
-    #     else: st.warning(f"No scandal data found at {ANALYZED_CSV_PATH}. Run Phase 1 pipeline.")
-
-    # with tab2:
-    df_map = load_starmap_data(STARMAP_CSV_PATH)
-    if df_map is not None: 
-        if 'z' not in df_map.columns:
-            st.error("⚠️ Data is 2D. Please run `python src/starmap_builder.py` to regenerate 3D data.")
-        else:
-            render_starmap(df_map)
-    else: 
-        st.warning(f"No star map data found at {STARMAP_CSV_PATH}. Run 'src/starmap_builder.py'.")
+    
+    # Corrected tab unpacking
+    tabs = st.tabs(["Galaxy"])
+    
+    with tabs[0]:
+        df_map = load_starmap_data(STARMAP_CSV_PATH)
+        if df_map is not None: 
+            if 'z' not in df_map.columns:
+                st.error("⚠️ Data is 2D. Please run `python src/starmap_builder.py` to regenerate 3D data.")
+            else:
+                render_starmap(df_map)
+        else: 
+            st.warning(f"No star map data found at {STARMAP_CSV_PATH}. Run 'src/starmap_builder.py'.")
 
 if __name__ == "__main__":
     main()
