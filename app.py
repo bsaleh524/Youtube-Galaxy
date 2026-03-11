@@ -16,19 +16,19 @@ st.set_page_config(
 # --- Configuration ---
 DATA_DIR = Path("data")
 ANALYZED_CSV_PATH = DATA_DIR / "analyzed_data.csv"
-GRAPH_JSON_PATH = DATA_DIR / "graph/fandom_graph_data_combined.json"
-
+# GRAPH_JSON_PATH = DATA_DIR / "processed/graph/fandom_graph_data_combined.json"
+GRAPH_JSON_PATH = DATA_DIR / "yt_api/graph_data.json"
 # --- Data Loading Functions ---
 
-@st.cache_data
-def load_scandal_data(filepath):
-    """Loads Phase 1 Sentiment Data"""
-    if not filepath.exists():
-        return None
-    df = pd.read_csv(filepath)
-    df['timestamp_utc'] = pd.to_datetime(df['timestamp_utc'], errors='coerce')
-    df.dropna(subset=['timestamp_utc'], inplace=True)
-    return df
+# @st.cache_data
+# def load_scandal_data(filepath):
+#     """Loads Phase 1 Sentiment Data"""
+#     if not filepath.exists():
+#         return None
+#     df = pd.read_csv(filepath)
+#     df['timestamp_utc'] = pd.to_datetime(df['timestamp_utc'], errors='coerce')
+#     df.dropna(subset=['timestamp_utc'], inplace=True)
+#     return df
 
 @st.cache_data
 def load_graph_data(filepath):
@@ -93,7 +93,7 @@ def render_creator_galaxy(graph_data):
             nodes.append(Node(
                 id=n['id'],
                 label=n['label'],
-                size=50,
+                size=800,
                 shape="circularImage",
                 image=n['image'], # Displays their YouTube Avatar
                 # title=f"{n['label']} ({n['subscribers']} subs)", # Hover text

@@ -20,6 +20,8 @@ st.set_page_config(
 DATA_DIR = Path("data")
 # Keeping your specific path
 STARMAP_CSV_PATH = DATA_DIR / "processed/plotly/starmap_data_big_tsne_trimmed_120_labeled.csv"
+# STARMAP_JSON_PATH = DATA_DIR / "processed/graph/fandom_graph_data_combined.json"
+# STARMAP_JSON_PATH = DATA_DIR / "yt_api/graph_data.json"
 
 # --- Helper Function for Images ---
 @st.cache_data(show_spinner=False)
@@ -147,7 +149,7 @@ def render_starmap(df):
             mask_unselected = df[cluster_col].astype(str) != selected_cluster
             
             # "Turn small" and gray out the unselected
-            df.loc[mask_unselected, 'size'] = 1
+            df.loc[mask_unselected, 'size'] = 20
             df.loc[mask_unselected, 'color_group'] = 'Background'
             
             # Highlight selected cluster
