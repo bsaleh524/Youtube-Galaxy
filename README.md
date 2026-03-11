@@ -1,4 +1,43 @@
-# Youtube-Galaxy
+# Controversy-Early-Warning-System
+Data pipeline for the YouTube Galaxy project. Scrapes Fandom wiki data and builds ML-based creator embeddings / star map data.
+
+> **The Streamlit visualization app has moved!**
+> See [Youtube-Galaxy-Streamlit-App](../Youtube-Galaxy-Streamlit-App/) for the deployable front-end.
+
+## Pipeline Overview
+
+End-to-end workflow to update the YouTube Galaxy visualization:
+
+1. **Scrape** — `python src/scrapers/fandom/my_combined.py`
+   → `data/fandom/youtubers_data_combined.json`
+
+2. **Build star map** — `python src/plots/starmap_builder.py`
+   → `data/processed/plotly/starmap_data_big_tsne_trimmed_120_labeled.csv` (numeric cluster IDs)
+
+3. **Label clusters** — Feed the CSV to Gemini Pro to add human-readable `cluster_name` column; save the result as the same labeled CSV.
+
+4. **Export Parquet** — `python src/plots/export_parquet.py`
+   → `data/processed/plotly/starmap_data.parquet` (~45% smaller than CSV)
+   The script also prints the exact `gh release create` command for the next step.
+
+5. **Upload to GitHub Releases** — Run the printed command (example for a new version):
+   ```bash
+   gh release create vX.Y \
+     data/processed/plotly/starmap_data.parquet \
+     --repo bsaleh524/Youtube-Galaxy-Streamlit-App \
+     --title "Starmap data vX.Y" \
+     --notes "Description of what changed"
+   ```
+   Then update `PARQUET_URL` in `Youtube-Galaxy-Streamlit-App/streamlit_app.py` to point to the new tag.
+    Note: Last used parquet based on starmap_data_big_tsne_trimmed_120_labeled.csv
+## Setup
+```bash
+mamba env create -f env_mac.yml   # or env_windows.yml on Windows
+mamba activate contro
+```
+
+---
+
 Predict controversies with influencers before they happen, based upon trends of current influencers on the respective platforms
 
 Problems:
