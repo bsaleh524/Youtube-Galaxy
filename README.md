@@ -1,5 +1,7 @@
-# Controversy-Early-Warning-System
+# Youtube-Galaxt
 Data pipeline for the YouTube Galaxy project. Scrapes Fandom wiki data and builds ML-based creator embeddings / star map data.
+
+<img src="diagrams/galaxy_gif_smaller.gif" >
 
 > **The Streamlit visualization app has moved!**
 > See [Youtube-Galaxy-Streamlit-App](../Youtube-Galaxy-Streamlit-App/) for the deployable front-end.
